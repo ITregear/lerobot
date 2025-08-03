@@ -269,8 +269,8 @@ class SO101FollowerEndEffector(SO101Follower):
         """
         return {
             "dtype": "float32",
-            "shape": (5,),  # Updated to 5 for roll
-            "names": {"delta_x": 0, "delta_y": 1, "delta_z": 2, "delta_roll": 3, "gripper": 4},
+            "shape": (4,),  # Back to 4 for position + gripper
+            "names": {"delta_x": 0, "delta_y": 1, "delta_z": 2, "gripper": 3},
         }
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
@@ -289,7 +289,7 @@ class SO101FollowerEndEffector(SO101Follower):
 
         # Convert action to numpy array if not already
         if isinstance(action, dict):
-            if all(k in action for k in ["delta_x", "delta_y", "delta_z", "delta_roll"]):
+            if all(k in action for k in ["delta_x", "delta_y", "delta_z"]):
                 # Apply step sizes to the deltas
                 delta_ee = np.array(
                     [
@@ -299,18 +299,16 @@ class SO101FollowerEndEffector(SO101Follower):
                     ],
                     dtype=np.float32,
                 )
-                # Handle roll orientation
-                roll_delta = action["delta_roll"] * self.config.end_effector_step_sizes.get("roll", 0.1)
                 # Handle gripper - convert to 0-2 range for processing
                 gripper_val = action.get("gripper", 0.0)
                 # Convert from -1 to +1 range to 0 to 2 range
                 gripper_val = (gripper_val + 1.0)  # Now 0 to 2
-                action = np.append(delta_ee, [roll_delta, gripper_val])
+                action = np.append(delta_ee, [gripper_val])
             else:
                 logger.warning(
-                    f"Expected action keys 'delta_x', 'delta_y', 'delta_z', 'delta_roll', got {list(action.keys())}"
+                    f"Expected action keys 'delta_x', 'delta_y', 'delta_z', got {list(action.keys())}"
                 )
-                action = np.zeros(5, dtype=np.float32)
+                action = np.zeros(4, dtype=np.float32)
 
         if self.current_joint_pos is None:
             # Read current joint positions
@@ -334,23 +332,6 @@ class SO101FollowerEndEffector(SO101Follower):
                 self.end_effector_bounds["max"],
             )
 
-        # Apply roll orientation change if provided
-        if len(action) > 3 and action[3] != 0:
-            # Create rotation matrix for roll (rotation around Z-axis)
-            roll_angle = action[3]  # This is the roll delta in radians
-            cos_roll = np.cos(roll_angle)
-            sin_roll = np.sin(roll_angle)
-            
-            # Roll rotation matrix (rotation around Z-axis)
-            roll_matrix = np.array([
-                [cos_roll, -sin_roll, 0],
-                [sin_roll, cos_roll, 0],
-                [0, 0, 1]
-            ])
-            
-            # Apply roll rotation to current orientation
-            desired_ee_pos[:3, :3] = self.current_ee_pos[:3, :3] @ roll_matrix
-
         # Compute inverse kinematics to get joint positions
         target_joint_values_in_degrees = self.kinematics.inverse_kinematics(
             self.current_joint_pos, desired_ee_pos
@@ -363,7 +344,7 @@ class SO101FollowerEndEffector(SO101Follower):
 
         # Handle gripper separately if included in action
         # Gripper action is in the range 0 - 2, convert to gripper position
-        gripper_delta = (action[-1] - 1.0) * 5.0  # Convert to gripper delta (action[4] is gripper)
+        gripper_delta = (action[-1] - 1.0) * 5.0  # Convert to gripper delta (action[3] is gripper)
         joint_action["gripper.pos"] = np.clip(
             self.current_joint_pos[-1] + gripper_delta,
             5,

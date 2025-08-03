@@ -65,7 +65,6 @@ class JoystickEndEffectorTeleopConfig(JoystickTeleopConfig):
                 0: "x",      # Left/right movement
                 1: "y",      # Forward/backward movement  
                 2: "z",      # Up/down movement
-                3: "roll",   # End-effector roll (orientation)
                 5: "gripper", # Gripper control (keeping existing mapping)
             }
 
@@ -75,6 +74,5 @@ class JoystickEndEffectorTeleopConfig(JoystickTeleopConfig):
                 "x": 0.02,      # 2cm per step
                 "y": 0.02,      # 2cm per step
                 "z": 0.02,      # 2cm per step
-                "roll": 0.1,    # ~5.7 degrees per step
                 "gripper": 5.0, # 5% gripper change per step
             }

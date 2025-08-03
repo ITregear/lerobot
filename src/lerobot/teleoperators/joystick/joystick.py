@@ -322,7 +322,6 @@ class JoystickEndEffectorTeleop(JoystickTeleop):
             "delta_x": float,
             "delta_y": float,
             "delta_z": float,
-            "delta_roll": float,  # Added roll orientation control
             "gripper": float,
         }
 
@@ -350,7 +349,6 @@ class JoystickEndEffectorTeleop(JoystickTeleop):
         delta_x = 0.0
         delta_y = 0.0
         delta_z = 0.0
-        delta_roll = 0.0  # Added roll control
         gripper_delta = 0.0
 
         # Calculate deltas from center positions for end-effector control
@@ -376,8 +374,6 @@ class JoystickEndEffectorTeleop(JoystickTeleop):
                     delta_y = normalized_delta
                 elif ee_axis == "z":
                     delta_z = normalized_delta
-                elif ee_axis == "roll":
-                    delta_roll = normalized_delta  # Added roll control
                 elif ee_axis == "gripper":
                     # Gripper uses a different scale
                     gripper_delta = normalized_delta
@@ -387,6 +383,5 @@ class JoystickEndEffectorTeleop(JoystickTeleop):
             "delta_x": delta_x,
             "delta_y": delta_y,
             "delta_z": delta_z,
-            "delta_roll": delta_roll,  # Added roll control
             "gripper": gripper_delta,
         }

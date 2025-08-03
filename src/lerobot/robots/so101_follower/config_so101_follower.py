@@ -68,7 +68,6 @@ class SO101FollowerEndEffectorConfig(SO101FollowerConfig):
             "x": 0.01,  # Reduced from 0.05 for slower movement
             "y": 0.01,  # Reduced from 0.05 for slower movement
             "z": 0.01,  # Reduced from 0.05 for slower movement
-            "roll": 0.1,  # Roll orientation step size (in radians)
         }
     )
 
