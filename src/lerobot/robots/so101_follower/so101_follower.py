@@ -19,6 +19,8 @@ import time
 from functools import cached_property
 from typing import Any
 
+import numpy as np
+
 from lerobot.cameras.utils import make_cameras_from_configs
 from lerobot.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
@@ -26,6 +28,7 @@ from lerobot.motors.feetech import (
     FeetechMotorsBus,
     OperatingMode,
 )
+from lerobot.model.kinematics import RobotKinematics
 
 from ..robot import Robot
 from ..utils import ensure_safe_goal_position
@@ -243,11 +246,17 @@ class SO101FollowerEndEffector(SO101Follower):
         # Store the bounds for end-effector position
         self.end_effector_bounds = self.config.end_effector_bounds
 
-        # TODO: Initialize kinematics when IK is implemented
-        # self.kinematics = RobotKinematics(
-        #     urdf_path=self.config.urdf_path,
-        #     target_frame_name=self.config.target_frame_name,
-        # )
+        # Initialize kinematics for IK
+        if self.config.urdf_path is None:
+            raise ValueError(
+                "urdf_path must be provided in the configuration for end-effector control. "
+                "Please set urdf_path in your SO101FollowerEndEffectorConfig."
+            )
+
+        self.kinematics = RobotKinematics(
+            urdf_path=self.config.urdf_path,
+            target_frame_name=self.config.target_frame_name,
+        )
 
         self.current_ee_pos = None
         self.current_joint_pos = None
@@ -256,17 +265,21 @@ class SO101FollowerEndEffector(SO101Follower):
     def action_features(self) -> dict[str, Any]:
         """
         Define action features for end-effector control.
-        For now, still returns joint space actions to test the flow.
+        Returns dictionary with dtype, shape, and names for end-effector actions.
         """
-        return self._motors_ft
+        return {
+            "dtype": "float32",
+            "shape": (5,),  # Updated to 5 for roll
+            "names": {"delta_x": 0, "delta_y": 1, "delta_z": 2, "delta_roll": 3, "gripper": 4},
+        }
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
         """
         Transform action from end-effector space to joint space and send to motors.
-        For now, just passes through joint actions to test the flow.
 
         Args:
-            action: Dictionary with joint position actions
+            action: Dictionary with keys 'delta_x', 'delta_y', 'delta_z' for end-effector control
+                   or a numpy array with [delta_x, delta_y, delta_z, gripper]
 
         Returns:
             The joint-space action that was sent to the motors
@@ -274,11 +287,95 @@ class SO101FollowerEndEffector(SO101Follower):
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
 
-        # TODO: Implement IK transformation here
-        # For now, just pass through joint actions
-        logger.debug("SO101FollowerEndEffector: Passing through joint actions (IK not yet implemented)")
+        # Convert action to numpy array if not already
+        if isinstance(action, dict):
+            if all(k in action for k in ["delta_x", "delta_y", "delta_z", "delta_roll"]):
+                # Apply step sizes to the deltas
+                delta_ee = np.array(
+                    [
+                        -action["delta_x"] * self.config.end_effector_step_sizes["x"],  # Reversed X
+                        -action["delta_y"] * self.config.end_effector_step_sizes["y"],  # Reversed Y
+                        action["delta_z"] * self.config.end_effector_step_sizes["z"],
+                    ],
+                    dtype=np.float32,
+                )
+                # Handle roll orientation
+                roll_delta = action["delta_roll"] * self.config.end_effector_step_sizes.get("roll", 0.1)
+                # Handle gripper - convert to 0-2 range for processing
+                gripper_val = action.get("gripper", 0.0)
+                # Convert from -1 to +1 range to 0 to 2 range
+                gripper_val = (gripper_val + 1.0)  # Now 0 to 2
+                action = np.append(delta_ee, [roll_delta, gripper_val])
+            else:
+                logger.warning(
+                    f"Expected action keys 'delta_x', 'delta_y', 'delta_z', 'delta_roll', got {list(action.keys())}"
+                )
+                action = np.zeros(5, dtype=np.float32)
 
-        return super().send_action(action)
+        if self.current_joint_pos is None:
+            # Read current joint positions
+            current_joint_pos = self.bus.sync_read("Present_Position")
+            self.current_joint_pos = np.array([current_joint_pos[name] for name in self.bus.motors])
+
+        # Calculate current end-effector position using forward kinematics
+        if self.current_ee_pos is None:
+            self.current_ee_pos = self.kinematics.forward_kinematics(self.current_joint_pos)
+
+        # Set desired end-effector position by adding delta
+        desired_ee_pos = np.eye(4)
+        desired_ee_pos[:3, :3] = self.current_ee_pos[:3, :3]  # Keep orientation
+
+        # Add delta to position and clip to bounds
+        desired_ee_pos[:3, 3] = self.current_ee_pos[:3, 3] + action[:3]
+        if self.end_effector_bounds is not None:
+            desired_ee_pos[:3, 3] = np.clip(
+                desired_ee_pos[:3, 3],
+                self.end_effector_bounds["min"],
+                self.end_effector_bounds["max"],
+            )
+
+        # Apply roll orientation change if provided
+        if len(action) > 3 and action[3] != 0:
+            # Create rotation matrix for roll (rotation around Z-axis)
+            roll_angle = action[3]  # This is the roll delta in radians
+            cos_roll = np.cos(roll_angle)
+            sin_roll = np.sin(roll_angle)
+            
+            # Roll rotation matrix (rotation around Z-axis)
+            roll_matrix = np.array([
+                [cos_roll, -sin_roll, 0],
+                [sin_roll, cos_roll, 0],
+                [0, 0, 1]
+            ])
+            
+            # Apply roll rotation to current orientation
+            desired_ee_pos[:3, :3] = self.current_ee_pos[:3, :3] @ roll_matrix
+
+        # Compute inverse kinematics to get joint positions
+        target_joint_values_in_degrees = self.kinematics.inverse_kinematics(
+            self.current_joint_pos, desired_ee_pos
+        )
+
+        # Create joint space action dictionary
+        joint_action = {
+            f"{key}.pos": target_joint_values_in_degrees[i] for i, key in enumerate(self.bus.motors.keys())
+        }
+
+        # Handle gripper separately if included in action
+        # Gripper action is in the range 0 - 2, convert to gripper position
+        gripper_delta = (action[-1] - 1.0) * 5.0  # Convert to gripper delta (action[4] is gripper)
+        joint_action["gripper.pos"] = np.clip(
+            self.current_joint_pos[-1] + gripper_delta,
+            5,
+            self.config.max_gripper_pos,
+        )
+
+        self.current_ee_pos = desired_ee_pos.copy()
+        self.current_joint_pos = target_joint_values_in_degrees.copy()
+        self.current_joint_pos[-1] = joint_action["gripper.pos"]
+
+        # Send joint space action to parent class
+        return super().send_action(joint_action)
 
     def get_observation(self) -> dict[str, Any]:
         if not self.is_connected:

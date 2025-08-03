@@ -317,19 +317,76 @@ class JoystickEndEffectorTeleop(JoystickTeleop):
     @property
     def action_features(self) -> dict[str, type]:
         """Return the action features for this teleoperator."""
-        # For now, still return joint actions to test the flow
-        features = {}
-        for joint_name in self.config.axis_mapping.values():
-            features[f"{joint_name}.pos"] = float
-        return features
+        # Return end-effector action features
+        return {
+            "delta_x": float,
+            "delta_y": float,
+            "delta_z": float,
+            "delta_roll": float,  # Added roll orientation control
+            "gripper": float,
+        }
 
     def get_action(self) -> dict[str, Any]:
         """Get current joystick action for end-effector control."""
         if not self.is_connected:
             raise RuntimeError("Joystick not connected")
 
-        # TODO: Implement end-effector action generation
-        # For now, just use the parent class method to test the flow
-        logger.debug("JoystickEndEffectorTeleop: Using joint actions (end-effector not yet implemented)")
-        
-        return super().get_action()
+        if not self.axis_ranges and self.calibration:
+            self.axis_ranges = self.calibration
+
+        pygame.event.pump()
+
+        # Initialize center positions on first call
+        if not self.position_initialized:
+            # Record current joystick positions as center
+            for axis_idx in self.config.ee_axis_mapping.keys():
+                if axis_idx < self.joystick.get_numaxes():
+                    self.center_positions[axis_idx] = self.joystick.get_axis(axis_idx)
+
+            self.position_initialized = True
+            logger.info("Initialized joystick center positions for end-effector control")
+
+        # Initialize end-effector deltas
+        delta_x = 0.0
+        delta_y = 0.0
+        delta_z = 0.0
+        delta_roll = 0.0  # Added roll control
+        gripper_delta = 0.0
+
+        # Calculate deltas from center positions for end-effector control
+        for axis_idx, ee_axis in self.config.ee_axis_mapping.items():
+            if axis_idx < self.joystick.get_numaxes():
+                current_value = self.joystick.get_axis(axis_idx)
+                center_value = self.center_positions.get(axis_idx, 0.0)
+
+                # Calculate delta from center
+                delta_raw = current_value - center_value
+
+                # Apply deadzone
+                if abs(delta_raw) < self.config.deadzone:
+                    delta_raw = 0.0
+
+                # Normalize delta (raw joystick range is -1 to +1, so delta range is -2 to +2)
+                normalized_delta = delta_raw / 2.0
+
+                # Map to appropriate end-effector axis
+                if ee_axis == "x":
+                    delta_x = normalized_delta
+                elif ee_axis == "y":
+                    delta_y = normalized_delta
+                elif ee_axis == "z":
+                    delta_z = normalized_delta
+                elif ee_axis == "roll":
+                    delta_roll = normalized_delta  # Added roll control
+                elif ee_axis == "gripper":
+                    # Gripper uses a different scale
+                    gripper_delta = normalized_delta
+
+        # Return end-effector action
+        return {
+            "delta_x": delta_x,
+            "delta_y": delta_y,
+            "delta_z": delta_z,
+            "delta_roll": delta_roll,  # Added roll control
+            "gripper": gripper_delta,
+        }

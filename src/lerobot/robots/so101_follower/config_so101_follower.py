@@ -65,9 +65,10 @@ class SO101FollowerEndEffectorConfig(SO101FollowerConfig):
 
     end_effector_step_sizes: dict[str, float] = field(
         default_factory=lambda: {
-            "x": 0.02,
-            "y": 0.02,
-            "z": 0.02,
+            "x": 0.01,  # Reduced from 0.05 for slower movement
+            "y": 0.01,  # Reduced from 0.05 for slower movement
+            "z": 0.01,  # Reduced from 0.05 for slower movement
+            "roll": 0.1,  # Roll orientation step size (in radians)
         }
     )
 
