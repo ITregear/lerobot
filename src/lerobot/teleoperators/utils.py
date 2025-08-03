@@ -69,5 +69,9 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> Teleoperator:
         from .joystick import JoystickTeleop
 
         return JoystickTeleop(config)
+    elif config.type == "joystick_ee":
+        from .joystick import JoystickEndEffectorTeleop
+
+        return JoystickEndEffectorTeleop(config)
     else:
         raise ValueError(config.type)

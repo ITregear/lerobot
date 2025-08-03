@@ -23,7 +23,7 @@ import pygame
 from lerobot.utils.utils import enter_pressed, move_cursor_up
 
 from ..teleoperator import Teleoperator
-from .config_joystick import JoystickTeleopConfig
+from .config_joystick import JoystickTeleopConfig, JoystickEndEffectorTeleopConfig
 
 logger = logging.getLogger(__name__)
 
@@ -296,3 +296,40 @@ class JoystickTeleop(Teleoperator):
         pygame.quit()
         self.is_initialized = False
         logger.info("Joystick disconnected")
+
+
+class JoystickEndEffectorTeleop(JoystickTeleop):
+    """
+    Joystick-based teleoperator for end-effector control.
+
+    This teleoperator outputs end-effector actions instead of joint actions.
+    For now, it passes through joint actions to test the flow before
+    implementing end-effector control.
+    """
+
+    config_class = JoystickEndEffectorTeleopConfig
+    name = "joystick_ee"
+
+    def __init__(self, config: JoystickEndEffectorTeleopConfig):
+        super().__init__(config)
+        self.config = config
+
+    @property
+    def action_features(self) -> dict[str, type]:
+        """Return the action features for this teleoperator."""
+        # For now, still return joint actions to test the flow
+        features = {}
+        for joint_name in self.config.axis_mapping.values():
+            features[f"{joint_name}.pos"] = float
+        return features
+
+    def get_action(self) -> dict[str, Any]:
+        """Get current joystick action for end-effector control."""
+        if not self.is_connected:
+            raise RuntimeError("Joystick not connected")
+
+        # TODO: Implement end-effector action generation
+        # For now, just use the parent class method to test the flow
+        logger.debug("JoystickEndEffectorTeleop: Using joint actions (end-effector not yet implemented)")
+        
+        return super().get_action()

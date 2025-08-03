@@ -43,3 +43,38 @@ class JoystickTeleopConfig(TeleoperatorConfig):
                 4: "wrist_roll",
                 5: "gripper",
             }
+
+
+@TeleoperatorConfig.register_subclass("joystick_ee")
+@dataclass
+class JoystickEndEffectorTeleopConfig(JoystickTeleopConfig):
+    """Configuration for joystick-based end-effector teleoperation."""
+
+    # End-effector axis mapping
+    ee_axis_mapping: dict[int, str] | None = None
+
+    # Step sizes for end-effector movement
+    ee_step_sizes: dict[str, float] | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        
+        if self.ee_axis_mapping is None:
+            # Default mapping for end-effector control
+            self.ee_axis_mapping = {
+                0: "x",      # Left/right movement
+                1: "y",      # Forward/backward movement  
+                2: "z",      # Up/down movement
+                3: "roll",   # End-effector roll (orientation)
+                5: "gripper", # Gripper control (keeping existing mapping)
+            }
+
+        if self.ee_step_sizes is None:
+            # Default step sizes for end-effector movement (in meters)
+            self.ee_step_sizes = {
+                "x": 0.02,      # 2cm per step
+                "y": 0.02,      # 2cm per step
+                "z": 0.02,      # 2cm per step
+                "roll": 0.1,    # ~5.7 degrees per step
+                "gripper": 5.0, # 5% gripper change per step
+            }

@@ -14,10 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .config_joystick import JoystickTeleopConfig
-from .joystick import JoystickTeleop
+from .config_joystick import JoystickTeleopConfig, JoystickEndEffectorTeleopConfig
+from .joystick import JoystickTeleop, JoystickEndEffectorTeleop
 
 __all__ = [
     "JoystickTeleopConfig",
     "JoystickTeleop",
+    "JoystickEndEffectorTeleopConfig",
+    "JoystickEndEffectorTeleop",
 ]

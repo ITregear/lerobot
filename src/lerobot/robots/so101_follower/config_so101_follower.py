@@ -15,6 +15,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from lerobot.cameras import CameraConfig
 
@@ -39,3 +40,45 @@ class SO101FollowerConfig(RobotConfig):
 
     # Set to `True` for backward compatibility with previous policies/dataset
     use_degrees: bool = False
+
+
+@RobotConfig.register_subclass("so101_follower_end_effector")
+@dataclass
+class SO101FollowerEndEffectorConfig(SO101FollowerConfig):
+    """Configuration for the SO101FollowerEndEffector robot."""
+
+    # Path to URDF file for kinematics
+    urdf_path: str | None = None
+
+    # End-effector frame name in the URDF
+    target_frame_name: str = "gripperframe"
+
+    # Default bounds for the end-effector position (in meters)
+    end_effector_bounds: dict[str, list[float]] = field(
+        default_factory=lambda: {
+            "min": [-0.3, -0.3, 0.0],  # min x, y, z
+            "max": [0.3, 0.3, 0.4],  # max x, y, z
+        }
+    )
+
+    max_gripper_pos: float = 50
+
+    end_effector_step_sizes: dict[str, float] = field(
+        default_factory=lambda: {
+            "x": 0.02,
+            "y": 0.02,
+            "z": 0.02,
+        }
+    )
+
+    def __post_init__(self):
+        if self.urdf_path is None:
+            # Use the URDF file in the same directory
+            urdf_file = Path(__file__).parent / "so101_new_calib.urdf"
+            if urdf_file.exists():
+                self.urdf_path = str(urdf_file)
+            else:
+                raise ValueError(
+                    f"URDF file not found at {urdf_file}. "
+                    "Please ensure so101_new_calib.urdf is in the so101_follower directory."
+                )

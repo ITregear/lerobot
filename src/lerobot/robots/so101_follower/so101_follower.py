@@ -29,7 +29,7 @@ from lerobot.motors.feetech import (
 
 from ..robot import Robot
 from ..utils import ensure_safe_goal_position
-from .config_so101_follower import SO101FollowerConfig
+from .config_so101_follower import SO101FollowerConfig, SO101FollowerEndEffectorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -221,3 +221,85 @@ class SO101Follower(Robot):
             cam.disconnect()
 
         logger.info(f"{self} disconnected.")
+
+
+class SO101FollowerEndEffector(SO101Follower):
+    """
+    SO101Follower robot with end-effector space control.
+
+    This robot inherits from SO101Follower but transforms actions from
+    end-effector space to joint space before sending them to the motors.
+    For now, it passes through joint actions without IK transformation
+    to test the flow before implementing inverse kinematics.
+    """
+
+    config_class = SO101FollowerEndEffectorConfig
+    name = "so101_follower_end_effector"
+
+    def __init__(self, config: SO101FollowerEndEffectorConfig):
+        super().__init__(config)
+        self.config = config
+
+        # Store the bounds for end-effector position
+        self.end_effector_bounds = self.config.end_effector_bounds
+
+        # TODO: Initialize kinematics when IK is implemented
+        # self.kinematics = RobotKinematics(
+        #     urdf_path=self.config.urdf_path,
+        #     target_frame_name=self.config.target_frame_name,
+        # )
+
+        self.current_ee_pos = None
+        self.current_joint_pos = None
+
+    @property
+    def action_features(self) -> dict[str, Any]:
+        """
+        Define action features for end-effector control.
+        For now, still returns joint space actions to test the flow.
+        """
+        return self._motors_ft
+
+    def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        """
+        Transform action from end-effector space to joint space and send to motors.
+        For now, just passes through joint actions to test the flow.
+
+        Args:
+            action: Dictionary with joint position actions
+
+        Returns:
+            The joint-space action that was sent to the motors
+        """
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        # TODO: Implement IK transformation here
+        # For now, just pass through joint actions
+        logger.debug("SO101FollowerEndEffector: Passing through joint actions (IK not yet implemented)")
+
+        return super().send_action(action)
+
+    def get_observation(self) -> dict[str, Any]:
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        # Read arm position
+        start = time.perf_counter()
+        obs_dict = self.bus.sync_read("Present_Position")
+        obs_dict = {f"{motor}.pos": val for motor, val in obs_dict.items()}
+        dt_ms = (time.perf_counter() - start) * 1e3
+        logger.debug(f"{self} read state: {dt_ms:.1f}ms")
+
+        # Capture images from cameras
+        for cam_key, cam in self.cameras.items():
+            start = time.perf_counter()
+            obs_dict[cam_key] = cam.async_read()
+            dt_ms = (time.perf_counter() - start) * 1e3
+            logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
+
+        return obs_dict
+
+    def reset(self):
+        self.current_ee_pos = None
+        self.current_joint_pos = None

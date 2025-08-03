@@ -15,6 +15,6 @@
 # limitations under the License.
 
 from .config import TeleoperatorConfig
-from .joystick import JoystickTeleop, JoystickTeleopConfig
+from .joystick import JoystickTeleop, JoystickTeleopConfig, JoystickEndEffectorTeleop, JoystickEndEffectorTeleopConfig
 from .teleoperator import Teleoperator
 from .utils import make_teleoperator_from_config
